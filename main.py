@@ -18,10 +18,10 @@ source_path = "/R/Heemskerk_Lab/Seth-06/BMPIntegralData"
 target_id = "454f457e-a41b-4807-8775-d132f15a228f"
 target_path = "/scratch/iheemske_root/iheemske99/shared_data/Seth-BMP"
 
-max_files = 5
+max_files = 99999
 # transfer 3TB at a time
-batch_limit = 0.5 * 1024 * 1024 * 1024 * 1024
-generate_plan = False
+batch_limit = 5 * 1024 * 1024 * 1024 * 1024
+generate_plan = True
 
 
 def get_transfer_client():
