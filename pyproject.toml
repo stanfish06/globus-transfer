@@ -1,0 +1,9 @@
+[project]
+name = "globus-transfer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "globus-sdk>=4.1.0",
+]
