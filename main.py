@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime
 
+import globus_sdk
 from globus_sdk import (
     AccessTokenAuthorizer,
     NativeAppAuthClient,
@@ -31,6 +32,7 @@ def get_transfer_client():
             if transfer_token:
                 print("using cached tokens")
                 return TransferClient(authorizer=AccessTokenAuthorizer(transfer_token))
+
     print("need to re-authenticate...")
     client = NativeAppAuthClient(CLIENT_ID)
     client.oauth2_start_flow(
@@ -46,6 +48,26 @@ def get_transfer_client():
     with open(TOKEN_FILE, "w") as f:
         json.dump({"transfer_token": transfer_token}, f)
     print(f"Tokens saved to {TOKEN_FILE}")
+    return TransferClient(authorizer=AccessTokenAuthorizer(transfer_token))
+
+
+def login_with_required_scopes(scopes):
+    client = NativeAppAuthClient(CLIENT_ID)
+    client.oauth2_start_flow(requested_scopes=scopes)
+    authorize_url = client.oauth2_get_authorize_url()
+    print(f"\n{'=' * 70}")
+    print("ADDITIONAL CONSENT REQUIRED")
+    print(f"{'=' * 70}")
+    print(f"\n{authorize_url}\n")
+    auth_code = input("Enter code: ").strip()
+    token_response = client.oauth2_exchange_code_for_tokens(auth_code)
+    transfer_token = token_response.by_resource_server["transfer.api.globus.org"][
+        "access_token"
+    ]
+
+    with open(TOKEN_FILE, "w") as f:
+        json.dump({"transfer_token": transfer_token}, f)
+
     return TransferClient(authorizer=AccessTokenAuthorizer(transfer_token))
 
 
@@ -226,8 +248,25 @@ def submit_transfer(transfer_client, batch, batch_id):
         target_file = f"{target_path.rstrip('/')}/{rel_path}"
         tdata.add_item(file_path, target_file, recursive=True)
         print(f"  + {file_path} -> {target_file}")
-    print(f"[SUBMIT] Transfer task for batch {batch_id}...")
-    task = transfer_client.submit_transfer(tdata)
+    try:
+        print(f"[SUBMIT] Transfer task for batch {batch_id}...")
+        task = transfer_client.submit_transfer(tdata)
+    except globus_sdk.TransferAPIError as err:
+        if err.info.consent_required:
+            print("\n[ERROR] Consent required for collections!")
+            print("Required scopes:", err.info.consent_required.required_scopes)
+            print("\nYou need to re-authenticate with collection access...")
+            print("Delete globus_tokens.json and run again, OR:")
+            print("Run this to grant consent:")
+
+            # Re-login with required scopes
+            new_client = login_with_required_scopes(
+                err.info.consent_required.required_scopes
+            )
+            # Retry the transfer
+            task = new_client.submit_transfer(tdata)
+        else:
+            raise
 
 
 # either transfer, none, or re-transfer
@@ -237,7 +276,7 @@ actions = {
     "3": "none",
     "4": "none",
 }
-dry_run = True
+dry_run = False
 
 
 def main():
@@ -264,12 +303,17 @@ def main():
                     change_batch_status(batches, int(batch_id), "transferred")
                 elif batch["status"] == "transferred":
                     print(f"batch {batch_id} was transferred already, so do nothing.")
+                elif batch["status"] == "completed":
+                    print(f"batch {batch_id} was completed, so do nothing.")
             elif action == "re-transfer":
                 _, batch = get_batch(batches, int(batch_id))
                 print(f"batch {batch_id} has status {batch['status']}")
                 print(f"will transfer {batch['file_names']} to {target_path}")
                 if not dry_run:
-                    submit_transfer(transfer_client, batch, batch_id)
+                    if batch["status"] == "completed":
+                        print(f"batch {batch_id} was completed, so do nothing.")
+                    else:
+                        submit_transfer(transfer_client, batch, batch_id)
             print("")
 
 
