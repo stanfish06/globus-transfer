@@ -14,15 +14,24 @@ CLIENT_ID = "a3b310f0-65dd-411e-9058-e845e2f0be12"
 TOKEN_FILE = "globus_tokens.json"
 
 source_id = "7f0e40f3-e8c3-11ef-a8c4-0affe48c30b5"
-source_path = "/R/Heemskerk_Lab/Seth-06/BMPIntegralData"
+source_path = "/R/Heemskerk_Lab/Shared-03/Stan"
+source_folders = ["251120_PGC_ENDO_FACS"]
 target_id = "454f457e-a41b-4807-8775-d132f15a228f"
-target_path = "/scratch/iheemske_root/iheemske99/shared_data/Seth-BMP"
+target_path = "/scratch/iheemske_root/iheemske0/zyyu"
 
 max_files = 99999
 # transfer 3TB at a time
 batch_limit = 5 * 1024 * 1024 * 1024 * 1024
 generate_plan = True
 
+# either transfer, none, or re-transfer
+dry_run = True
+actions = {
+    "1": "re-transfer",
+    "2": "none",
+    "3": "none",
+    "4": "none",
+}
 
 def get_transfer_client():
     if os.path.exists(TOKEN_FILE):
@@ -73,6 +82,10 @@ def login_with_required_scopes(scopes):
 
 def fetch_folder_content(transfer_client, collection_id, path):
     for item in transfer_client.operation_ls(collection_id, path=path):
+        # skip item if a filter list is specified
+        if len(source_folders) > 0:
+            if all([f not in item["name"] for f in source_folders]):
+                continue
         yield item
 
 
@@ -267,17 +280,6 @@ def submit_transfer(transfer_client, batch, batch_id):
             task = new_client.submit_transfer(tdata)
         else:
             raise
-
-
-# either transfer, none, or re-transfer
-actions = {
-    "1": "transfer",
-    "2": "none",
-    "3": "none",
-    "4": "none",
-}
-dry_run = False
-
 
 def main():
     transfer_client = get_transfer_client()
